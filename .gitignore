@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# Environment variables
+.env
+
+# Data files
+data/uploads/*
+data/outputs/*
+data/reviews/*
+!data/uploads/.gitkeep
+!data/outputs/.gitkeep
+!data/reviews/.gitkeep
+
+# Logs
+logs/*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# API cache
+*.cache
+
+# Large model files
+*.model
+*.pkl
+
+# Windows specific
+desktop.ini
+
