@@ -38,3 +38,8 @@ httpx==0.25.2
 
 # Development
 uvicorn[standard]==0.24.0
+
+# Agregadas nuevas dependencias (ML/NLP)
+sentence-transformers==2.2.2
+scikit-learn==1.3.2
+numpy==1.24.3
