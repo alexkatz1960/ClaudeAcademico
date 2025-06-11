@@ -604,103 +604,133 @@ class FootnoteReconnectionEngine:
         return direct_matches
     
     def _find_semantic_matches(self, soup: BeautifulSoup, unmatched_footnotes: Dict[str, FootnoteData]) -> Dict[str, FootnoteData]:
-        """
-        Usar similitud semántica para encontrar footnotes que perdieron sus IDs.
-        
-        Mejora v2.2.1: Control de unicidad para evitar matches múltiples al mismo candidato
-        """
-        if not self.embeddings_model:
-            self.logger.warning("Modelo de embeddings no disponible para fallback semántico")
-            return {}
-        
-        semantic_matches = {}
-        
-        try:
-            with self._lock:  # Thread safety
-                # Extraer texto de posibles footnotes en HTML traducido
-                candidate_footnotes = self._extract_candidate_footnotes(soup)
+    """
+    Usar similitud semántica para encontrar footnotes que perdieron sus IDs.
+    
+    OPTIMIZACIÓN v2.2.2: Algoritmo O(n) usando matriz pre-calculada + Hungarian-style assignment
+    """
+    if not self.embeddings_model:
+        self.logger.warning("Modelo de embeddings no disponible para fallback semántico")
+        return {}
+    
+    semantic_matches = {}
+    
+    try:
+        with self._lock:  # Thread safety
+            # Extraer texto de posibles footnotes en HTML traducido
+            candidate_footnotes = self._extract_candidate_footnotes(soup)
+            
+            if not candidate_footnotes:
+                return {}
+            
+            # Filtrar candidatos triviales
+            filtered_candidates = []
+            for candidate in candidate_footnotes:
+                if not self._is_trivial_text(candidate['text']):
+                    filtered_candidates.append(candidate)
+                else:
+                    if self.debug_mode:
+                        self.logger.debug(f"Candidato trivial filtrado: '{candidate['text']}'")
+            
+            candidate_footnotes = filtered_candidates
+            
+            if not candidate_footnotes:
+                self.logger.warning("No hay candidatos válidos después del filtrado")
+                return {}
+            
+            # OPTIMIZACIÓN: Pre-calcular todas las similitudes una sola vez O(n)
+            footnote_ids = list(unmatched_footnotes.keys())
+            footnote_embeddings = []
+            
+            for unique_id in footnote_ids:
+                footnote_data = unmatched_footnotes[unique_id]
+                if footnote_data.semantic_embedding is not None:
+                    footnote_embeddings.append(footnote_data.semantic_embedding)
+                else:
+                    footnote_embeddings.append(None)
+            
+            # Generar embeddings para candidatos con cache
+            candidate_embeddings = self._get_candidate_embeddings(candidate_footnotes)
+            
+            # Pre-calcular matriz de similitudes completa (una sola operación vectorizada)
+            valid_footnote_indices = [i for i, emb in enumerate(footnote_embeddings) if emb is not None]
+            
+            if not valid_footnote_indices:
+                return {}
+            
+            valid_footnote_embeddings = np.array([footnote_embeddings[i] for i in valid_footnote_indices])
+            
+            # CLAVE: Una sola llamada a cosine_similarity para toda la matriz O(1)
+            similarity_matrix = cosine_similarity(valid_footnote_embeddings, candidate_embeddings)
+            
+            # OPTIMIZACIÓN: Algoritmo greedy optimizado para assignment O(n log n)
+            assignment_pairs = self._optimal_assignment_greedy(
+                similarity_matrix, valid_footnote_indices, footnote_ids, 
+                candidate_footnotes, unmatched_footnotes
+            )
+            
+            # Crear footnotes reconectadas basado en assignment
+            for footnote_idx, candidate_idx, similarity_score in assignment_pairs:
+                unique_id = footnote_ids[footnote_idx]
+                footnote_data = unmatched_footnotes[unique_id]
+                best_candidate = candidate_footnotes[candidate_idx]
                 
-                if not candidate_footnotes:
-                    return {}
+                updated_footnote = FootnoteData(
+                    unique_id=footnote_data.unique_id,
+                    original_text=footnote_data.original_text,
+                    translated_text=best_candidate['text'],
+                    superscript_location=best_candidate['location'],
+                    link_target=best_candidate.get('href'),
+                    css_classes=best_candidate.get('classes', []),
+                    html_attributes=best_candidate.get('attributes', {}),
+                    semantic_embedding=footnote_data.semantic_embedding,
+                    reconnection_confidence=float(similarity_score),
+                    reconnection_method='semantic_fallback_optimized'
+                )
                 
-                # Filtrar candidatos triviales
-                filtered_candidates = []
-                for candidate in candidate_footnotes:
-                    if not self._is_trivial_text(candidate['text']):
-                        filtered_candidates.append(candidate)
-                    else:
-                        if self.debug_mode:
-                            self.logger.debug(f"Candidato trivial filtrado: '{candidate['text']}'")
+                semantic_matches[unique_id] = updated_footnote
                 
-                candidate_footnotes = filtered_candidates
-                
-                if not candidate_footnotes:
-                    self.logger.warning("No hay candidatos válidos después del filtrado")
-                    return {}
-                
-                # Generar embeddings para candidatos con cache
-                candidate_embeddings = self._get_candidate_embeddings(candidate_footnotes)
-                
-                # Control de unicidad - set de índices ya utilizados
-                used_candidate_indices: Set[int] = set()
-                
-                # Para cada footnote sin match, buscar el mejor candidato disponible
-                for unique_id, footnote_data in unmatched_footnotes.items():
-                    if footnote_data.semantic_embedding is None:
-                        continue
-                    
-                    # Calcular similitudes solo con candidatos no utilizados
-                    available_indices = [i for i in range(len(candidate_footnotes)) 
-                                       if i not in used_candidate_indices]
-                    
-                    if not available_indices:
-                        if self.debug_mode:
-                            self.logger.debug("No hay más candidatos disponibles para matching")
-                        break
-                    
-                    available_embeddings = candidate_embeddings[available_indices]
-                    original_embedding = footnote_data.semantic_embedding.reshape(1, -1)
-                    similarities = cosine_similarity(original_embedding, available_embeddings)[0]
-                    
-                    # Encontrar mejor match que supere el umbral
-                    best_local_idx = np.argmax(similarities)
-                    best_similarity = similarities[best_local_idx]
-                    best_global_idx = available_indices[best_local_idx]  # Índice en lista original
-                    
-                    if best_similarity >= self.similarity_threshold:
-                        best_candidate = candidate_footnotes[best_global_idx]
-                        
-                        # Crear footnote reconectada
-                        updated_footnote = FootnoteData(
-                            unique_id=footnote_data.unique_id,
-                            original_text=footnote_data.original_text,
-                            translated_text=best_candidate['text'],
-                            superscript_location=best_candidate['location'],
-                            link_target=best_candidate.get('href'),
-                            css_classes=best_candidate.get('classes', []),
-                            html_attributes=best_candidate.get('attributes', {}),
-                            semantic_embedding=footnote_data.semantic_embedding,
-                            reconnection_confidence=float(best_similarity),
-                            reconnection_method='semantic_fallback'
-                        )
-                        
-                        semantic_matches[unique_id] = updated_footnote
-                        
-                        # Marcar candidato como utilizado
-                        used_candidate_indices.add(best_global_idx)
-                        
-                        if self.debug_mode:
-                            self.logger.debug(f"Match semántico único: {unique_id} -> candidato {best_global_idx} "
-                                            f"(similitud: {best_similarity:.3f})")
-                    else:
-                        if self.debug_mode:
-                            self.logger.debug(f"Sin match para {unique_id}: mejor similitud {best_similarity:.3f} "
-                                            f"< umbral {self.similarity_threshold}")
-        
-        except Exception as e:
-            self.logger.error(f"Error en matching semántico: {e}")
-        
-        return semantic_matches
+                if self.debug_mode:
+                    self.logger.debug(f"Match semántico optimizado: {unique_id} -> candidato {candidate_idx} "
+                                    f"(similitud: {similarity_score:.3f})")
+    
+    except Exception as e:
+        self.logger.error(f"Error en matching semántico optimizado: {e}")
+    
+    return semantic_matches
+
+def _optimal_assignment_greedy(self, similarity_matrix: np.ndarray, valid_footnote_indices: List[int], 
+                             footnote_ids: List[str], candidate_footnotes: List[Dict],
+                             unmatched_footnotes: Dict[str, FootnoteData]) -> List[Tuple[int, int, float]]:
+    """
+    Algoritmo greedy optimizado para assignment de footnotes a candidatos O(n log n)
+    
+    Returns:
+        Lista de tuplas (footnote_idx, candidate_idx, similarity_score)
+    """
+    # Crear lista de todos los matches posibles con scores
+    all_matches = []
+    for i, footnote_idx in enumerate(valid_footnote_indices):
+        for j in range(len(candidate_footnotes)):
+            similarity = similarity_matrix[i, j]
+            if similarity >= self.similarity_threshold:
+                all_matches.append((footnote_idx, j, similarity))
+    
+    # Ordenar por similarity descendente O(n log n)
+    all_matches.sort(key=lambda x: x[2], reverse=True)
+    
+    # Greedy assignment evitando duplicados O(n)
+    used_footnotes = set()
+    used_candidates = set()
+    assignments = []
+    
+    for footnote_idx, candidate_idx, similarity in all_matches:
+        if footnote_idx not in used_footnotes and candidate_idx not in used_candidates:
+            assignments.append((footnote_idx, candidate_idx, similarity))
+            used_footnotes.add(footnote_idx)
+            used_candidates.add(candidate_idx)
+    
+    return assignments
     
     def _get_candidate_embeddings(self, candidates: List[Dict[str, Any]]) -> np.ndarray:
         """

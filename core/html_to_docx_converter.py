@@ -21,6 +21,7 @@ from typing import Dict, List, Tuple, Any, Optional, Union, Protocol
 from dataclasses import dataclass, asdict
 from datetime import datetime
 import uuid
+from .html_sanitizer import html_sanitizer
 
 # Document processing
 from docx import Document
@@ -382,7 +383,19 @@ class HTMLtoDocxConverter:
             if complex_tables_info:
                 self.logger.info(f"Detectadas {len(complex_tables_info)} tablas complejas")
             
-            # 3. Procesar footnotes si está habilitado
+            # 3. Sanitizar HTML para prevenir XSS y validar seguridad
+            validation_result = html_sanitizer.validate_html_safety(html_content)
+            if not validation_result["safe"]:
+                self.logger.warning(f"HTML inseguro detectado: {validation_result['issues']}")
+            
+            sanitized_html = html_sanitizer.sanitize_html(html_content)
+            if len(sanitized_html) != len(html_content):
+                self.logger.info(f"HTML sanitizado: {len(html_content)} -> {len(sanitized_html)} chars")
+            
+            # Usar HTML sanitizado para el resto del procesamiento
+            html_content = sanitized_html
+            
+            # 4. Procesar footnotes si está habilitado
             footnote_mapping = {}
             processed_html = html_content
             
@@ -390,10 +403,10 @@ class HTMLtoDocxConverter:
                 processed_html, footnote_mapping = self._process_footnotes_for_preservation(html_content)
                 self.logger.info(f"Procesadas {len(footnote_mapping)} footnotes con IDs únicos")
             
-            # 4. Insertar marcadores de formato protegidos (con soporte extendido)
+            # 5. Insertar marcadores de formato protegidos (con soporte extendido)
             protected_html = self._insert_format_markers(processed_html)
             
-            # 5. Intentar conversión con métodos disponibles
+            # 6. Intentar conversión con métodos disponibles
             conversion_success = False
             method_used = ""
             

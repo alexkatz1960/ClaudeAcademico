@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  interfaces:
+    build: .
+    container_name: interfaces_app
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    volumes:
+      - ./interfaces:/app/interfaces
+      - ./requirements_interfaces.txt:/app/requirements_interfaces.txt
+    restart: unless-stopped
