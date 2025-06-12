@@ -1,0 +1,3 @@
+Contenido traducido simulado (en → es)
+Este archivo simula una traducción académica completa.
+En producción, aquí estarían las APIs de DeepL y Claude.

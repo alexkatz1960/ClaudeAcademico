@@ -1,13 +1,17 @@
-version: "3.9"
-
 services:
   interfaces:
     build: .
-    container_name: interfaces_app
     ports:
       - "8000:8000"
       - "8501:8501"
     volumes:
-      - ./interfaces:/app/interfaces
-      - ./requirements_interfaces.txt:/app/requirements_interfaces.txt
-    restart: unless-stopped
+      - ./.env:/app/.env
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+    environment:
+      - PYTHONPATH=/app
+    command: |
+      sh -c "
+        uvicorn interfaces.fastapi_backend.working:app --host 0.0.0.0 --port 8000 --reload &
+        streamlit run interfaces/streamlit_dashboard/dashboard.py --server.port=8501 --server.address=0.0.0.0 --server.enableCORS=false
+      "

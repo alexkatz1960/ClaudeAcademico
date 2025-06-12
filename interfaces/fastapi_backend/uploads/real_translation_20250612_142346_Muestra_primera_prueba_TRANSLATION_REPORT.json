@@ -1,0 +1,60 @@
+{
+  "translation_summary": {
+    "success": true,
+    "mode": "REAL_TRANSLATION",
+    "input_file": "uploads\\real_translation_20250612_142346_Muestra_primera_prueba.pdf",
+    "output_docx": "uploads\\real_translation_20250612_142346_Muestra_primera_prueba_TRADUCIDO.docx",
+    "language_pair": "en → es",
+    "processing_timestamp": "2025-06-12T14:23:53.771828"
+  },
+  "text_metrics": {
+    "original_characters": 57187,
+    "translated_characters": 61489,
+    "file_size_mb": 1.06
+  },
+  "apis_used": [
+    "DeepL Pro API",
+    "Claude API"
+  ],
+  "files_generated": [
+    "uploads\\real_translation_20250612_142346_Muestra_primera_prueba_extracted_text.txt",
+    "uploads\\real_translation_20250612_142346_Muestra_primera_prueba_deepl_translation.txt",
+    "uploads\\real_translation_20250612_142346_Muestra_primera_prueba_TRADUCIDO.docx"
+  ],
+  "phases_completed": [
+    {
+      "phase": 1,
+      "name": "PDF_Text_Extraction_REAL",
+      "status": "completed",
+      "text_length": 57187,
+      "file_size_mb": 1.06
+    },
+    {
+      "phase": 2,
+      "name": "DeepL_Translation_REAL",
+      "status": "completed",
+      "input_length": 57187,
+      "output_length": 61489,
+      "language_pair": "en → es"
+    },
+    {
+      "phase": 3,
+      "name": "Claude_Terminology_Enhancement",
+      "status": "completed",
+      "improvements_applied": "terminology"
+    },
+    {
+      "phase": 4,
+      "name": "DOCX_Generation_REAL",
+      "status": "completed",
+      "output_file": "uploads\\real_translation_20250612_142346_Muestra_primera_prueba_TRADUCIDO.docx",
+      "format": "Microsoft Word (.docx)"
+    }
+  ],
+  "quality_indicators": {
+    "deepl_translation": "completed",
+    "claude_enhancement": "applied",
+    "docx_generation": "success",
+    "text_extraction": "success"
+  }
+}

@@ -1,0 +1,4 @@
+Contenido limpio simulado de simple_pipeline_20250612_135157_Muestra_primera_prueba.pdf
+Idioma origen: en
+Idioma destino: es
+Este es contenido académico simulado para testing.
